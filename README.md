@@ -1,7 +1,7 @@
 # PyOptoSigma
 Python module for operating stepping moter stages manufactured by OptoSigma and Sigma Koki
 
-シグマ光機のステージコントローラをPCから制御するスクリプト．
+シグマ光機（OptoSigma）のステージコントローラを Python で制御するモジュール．
 
 # Dependencies
 
@@ -28,5 +28,25 @@ The following code (python3) will work for example, to rotate 45 degree.
 ```
 
 # See also
-Documentation is under construction (See Issues).
-A test code written at the end of ```pyOptpSigma.py``` will help more operations.
+* Documentation is under construction (See Issues).
+* A test code written at the end of ```pyOptoSigma.py``` will help more operations.
+
+# Confirmed Environments
+Listed below are confirmed to work propery. But this module is not limited to the listed equipments.
+
+## Controllers
+* SHOT-702
+* SHOT-304GS
+
+## Stages
+### Linear translation stages
+* SGSP26-150
+* SGSP33-200
+* SGSP46-500
+* SGSP46-800
+
+### Rotation stages
+* SGSP-120YAW
+
+## OS
+* Ubuntu 14.04.2
