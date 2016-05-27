@@ -3,7 +3,7 @@ Python module for operating stepping moter stages manufactured by OptoSigma and 
 
 シグマ光機（OptoSigma）のステージコントローラを Python で制御するモジュール．
 
-# Dependencies
+# Dependencies installation
 
 This module depends on ```python3``` and ```pyserial```.
 In Ubuntu 14.04, you should install python3 packages first.
@@ -15,16 +15,22 @@ And then install ```pyserial``` via pip.
  sudo pip3 install pyserial
 ```
 
+To access to serial ports without sudo privileges, the user must belong to  ```dialout``` group.
+```
+ sudo gpasswd -a [user_name] dialout
+```
+where, [user_name] is the user name, which can be confirmed by ```id``` command.
+
 # Get started
 
 Copy all python scripts to your current directory.
 The following code (python3) will work for example, to rotate 45 degree.
 ```
- import pyOptoSigma
- stages = pyOptoSigma.Session(Controllers.SHOT_702) # specify your stage controller.
- stages.append_stage(Stages.SGSP_120YAW) # add your stage accordingly.
- stages.connect()
- stages.move(amount=45000) # rotate 45 degree
+ from pyOptoSigma import *
+ stages = Session(Controllers.SHOT_702)     # specify your stage controller.
+ stages.append_stage(Stages.SGSP_120YAW)    # add your stage accordingly.
+ stages.connect()                           # connect to a serial port.
+ stages.move(amount=45000)                  # rotate 45 degree.
 ```
 
 # See also
