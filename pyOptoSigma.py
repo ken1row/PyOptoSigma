@@ -1,23 +1,437 @@
 #!/usr/bin/env python3
 
-from controllers import *
-from stages import *
-from enum import IntEnum
+from enum import Enum, IntEnum
 import serial
 import time
 
-class Excitation(IntEnum):
-    Free = 0
-    Hold = 1
-
 class Bad_Command_Parameter_or_Timing(Exception):
-    '''Raises if the command, parameter, or timing is wrong.
+    '''Raised if the command, parameter, or timing is wrong.
     
     This exception raises when the controller responds 'NG'.
     '''
     pass
 class Not_Supported(Exception):
+    ''' Raised if the command is not supported by the controller.
+    '''
     pass
+
+class Undefined_Controller(Exception):
+    pass
+
+class Undefined_Stage(Exception):
+    pass
+
+class Controllers(Enum):
+    SHOT_302GS = 1
+    SHOT_304GS = 2
+    SHOT_702 = 3
+    Undefined = 99
+    
+    
+class Controller_Modes(Enum):
+    ''' Instruction set of controller's operation.
+    '''
+    SHOT = 0
+    SHOT_enhanced = 1
+    HIT = 2
+    
+class Comm_ack(Enum):
+    MAIN = 0
+    SUB = 1
+    
+class Excitation(IntEnum):
+    Free = 0
+    Hold = 1
+
+class Stages(IntEnum):
+    #
+    # Linear translation stages
+    #
+    Linear_stage = 0
+    
+    # SGSP series
+    SGSP15_10 = 151
+    SGSP20_20 = 202
+    SGSP20_35 = 203
+    SGSP20_85 = 208
+    SGSP26_50 = 265
+    SGSP26_100 = 2610
+    SGSP26_150 = 2615
+    SGSP26_200 = 2620
+    SGSP33_50 = 335
+    SGSP33_100 = 3310
+    SGSP33_200 = 3320
+    SGSP46_300 = 4630
+    SGSP46_400 = 4640
+    SGSP46_500 = 4650
+    SGSP46_800 = 4680
+    SGSP65_1200 = 6512
+    SGSP65_1500 = 6515
+    
+    # OSMS series are compatible to SGSP series.
+    OSMS15_10 = 151
+    OSMS20_20 = 202
+    OSMS20_35 = 203
+    OSMS20_85 = 208
+    OSMS26_50 = 265
+    OSMS26_100 = 2610
+    OSMS26_150 = 2615
+    OSMS26_200 = 2620
+    OSMS33_50 = 335
+    OSMS33_100 = 3310
+    OSMS33_200 = 3320
+    OSMS46_300 = 4630
+    OSMS46_400 = 4640
+    OSMS46_500 = 4650
+    OSMS46_800 = 4680
+    OSMS65_1200 = 6512
+    OSMS65_1500 = 6515
+    
+    # HST series
+    HST_50 = 5
+    HST_100 = 10
+    HST_200 = 20
+    
+    # HPS series
+    HPS60_20 = 602
+    HPS80_50 = 805
+    HPS120_60 = 1206
+    
+    # TAMM series
+    TAMM40_10 = 401
+    TAMM60_15 = 601
+    TAMM100_50 = 1005
+    TAMM100_100 = 1001
+    
+    Linear_stage_end = 9999
+    #
+    # Rotation stages
+    #
+    Rotation_stage = 10000
+    
+    # SGSP series
+    SGSP_40YAW = 10040
+    SGSP_60YAW = 10060
+    SGSP_80YAW = 10080
+    SGSP_120YAW = 10120
+    SGSP_160YAW = 10160
+    
+    # HST series
+    HST_120YAW = 11120
+    HST_160YAW = 11160
+    
+    # TODO: HDS series
+    
+    Rotation_stage_end = 19999
+    #
+    # Gonio stage
+    #
+    Gonio_stage = 20000
+    
+    # SGSP series
+    SGSP_60A75 = 26075
+    SGSP_60A100 = 26010
+    SGSP_60A130 = 26030
+    
+    Gonio_stage_end = 29999
+    
+def __get_baserate(stype):
+    ''' Resolution (full) of each stage. 
+    '''
+    # translation stages. 1 means 1 micro-meter.
+    if stype is Stages.SGSP15_10:
+        return 2
+    if stype is Stages.SGSP20_20:
+        return 2
+    if stype is Stages.SGSP20_35:
+        return 2
+    if stype is Stages.SGSP20_85:
+        return 2
+    if stype is Stages.SGSP26_50:
+        return 4
+    if stype is Stages.SGSP26_100:
+        return 4
+    if stype is Stages.SGSP26_150:
+        return 4
+    if stype is Stages.SGSP26_200:
+        return 4
+    if stype is Stages.SGSP33_50:
+        return 12
+    if stype is Stages.SGSP33_100:
+        return 12
+    if stype is Stages.SGSP33_200:
+        return 12
+    if stype is Stages.SGSP46_300:
+        return 20
+    if stype is Stages.SGSP46_400:
+        return 20
+    if stype is Stages.SGSP46_500:
+        return 20
+    if stype is Stages.SGSP46_800:
+        return 20
+    if stype is Stages.SGSP65_1200:
+        return 50
+    if stype is Stages.SGSP65_1500:
+        return 50
+        
+    if stype is Stages.HST_50:
+        return 4
+    if stype is Stages.HST_100:
+        return 4
+    if stype is Stages.HST_200:
+        return 4
+        
+    if stype is Stages.HPS60_20:
+        return 2 # TODO: and other HPS series
+
+    if stype is Stages.TAMM40_10:
+        return 2 # TODO: and other TAMM series        
+        
+    # Rotation stages. 1 means 0.001 degree.
+    if stype is Stages.SGSP_40YAW:
+        return 5 
+    if stype is Stages.SGSP_60YAW:
+        return 5
+    if stype is Stages.SGSP_80YAW:
+        return 5
+    if stype is Stages.SGSP_120YAW:
+        return 5
+    if stype is Stages.SGSP_160YAW:
+        return 5
+        
+    if stype is Stages.HST_120YAW:
+        return 5 # TODO: and oterh HSP series
+        
+    # Gonio stages. 1 means 0.001 degree.
+    if stype is Stages.SGSP_60A75:
+        return 2
+    if stype is Stages.SGSP_60A100:
+        return 1
+    if stype is Stages.SGSP_60A130:
+        return 1
+        
+    raise Undefined_Stage(stype.name + ' is not defined as a valid stage, or just not implemented.')
+    
+    
+def is_linear_stage(stype):
+    return int(stype) > int(Stages.Linear_stage) and int(stype) < int(Stages.Linear_stage_end)
+    
+def is_rotation_stage(stype):
+    return int(stype) > int(Stages.Rotation_stage) and int(stype) < int(Stages.Rotation_stage_end)
+    
+def is_gonio_stage(stype):
+    return int(stype) > int(Stages.Gonio_stage) and int(stype) < int(Stages.Gonio_stage_end)
+    
+def get_value_per_pulse(stype):
+    return __get_baserate(stype)
+
+def get_micro_meter_per_pulse(stype):
+    if not is_linear_stage(stype):
+        raise Undefined_Stage(stype.name + ' is not a linear stage.')
+    return __get_baserate(stype)
+    
+def get_milli_degree_per_pulse(stype):
+    if not (is_rotation_stage(stype) or is_gonio_stage(stype)):
+        raise Undefined_Stage(stype.name + ' is not a rotation stage.')
+    return __get_baserate(stype)
+    
+
+class Controller:
+    '''Class for a controller's parameters.
+    
+    Attributes
+    ----------
+    ctype : Controllers
+        Type of a controller.
+    baudrate : int
+        Baudrate of RS232C communication.
+    delimiter : str
+        Delimiter of RS232C communication.
+    comm_ack : Comm_ack
+        COMM/ACK mode.
+        
+    Methods
+    -------
+    get_support_baudrates()
+        Get the tuple of supported baudrates of this controller.
+    get_support_axes()
+        Get the number of controllable stages.
+    get_support_speed_ranges()
+        Get the range of speed values.
+    is_support_[COM]() : bool
+        Returns whether the controller supports [COM] operation.
+        
+    Parameters
+    ----------
+    ctype : Controllers
+        Type of the controller.
+        
+    Raises
+    ------
+    Undefined_Controller
+    '''
+    def __init__(self, ctype):
+        self.ctype = ctype
+        self.parity = 'N'
+        self.databit = 8
+        self.stopbit = 1
+        self.rtscts = True
+        self.read_timeout = 1
+        self.write_timeout = 1
+        self.delimiter = b'\r\n'
+        self.comm_ack = Comm_ack.MAIN
+        # Load default values.
+        if self.ctype is Controllers.SHOT_302GS or self.ctype is Controllers.SHOT_304GS:
+            self.baudrate = 9600
+            self.cmode = Controller_Modes.SHOT
+        elif ctype is Controllers.SHOT_702:
+            self.baudrate = 38400
+            self.cmode = Controller_Modes.SHOT
+        else:
+            raise Undefined_Controller('Controller is undefined.')
+    
+    def __is_30X(self):
+        return self.ctype is Controllers.SHOT_302GS or self.ctype is Controllers.SHOT_304GS
+    def __is_70X(self):
+        return self.ctype is Controllers.SHOT_702
+    
+    def is_SHOT(self):
+        if self.cmode is Controller_Modes.SHOT:
+            return True
+        if self.cmode is Controller_Modes.SHOT_enhanced:
+            return True
+        return False
+        
+    def is_HIT(self):
+        return self.cmode is Controller_Modes.HIT
+    
+    def get_support_baudrates(self):
+        if self.__is_30X():
+            return (4800, 9600, 19200, 38400)
+        if self.__is_70X():
+            return (38400, )
+        return ()
+        
+    def get_support_devisions(self):
+        return (1,2,4,5,8,10,20,25,40,50,80,100,125,200,250)
+    
+    def get_support_axes(self):
+        ''' Get the number of controllable stages.
+        
+        This method does not check the value of AXIS memory switch nor how many stages are connected.
+        '''
+        if self.ctype == Controllers.SHOT_304GS:
+            return 4
+        return 2
+        
+    def get_support_speed_ranges(self):
+        '''Get the range of speed.
+        
+        Returns
+        -------
+        ((S_min, S_max), (F_min, F_max), (R_min, R_max))
+        '''
+        return ((1, 500000), (1, 500000), (0, 1000))        
+        
+    # Whether the controller supports specific command.
+    # Moving operations
+    def is_support_H(self):
+        return True
+    def is_support_M(self):
+        return True
+    def is_support_A(self):
+        return True
+    def is_support_E(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_K(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_J(self):
+        return True
+    def is_support_G(self):
+        return True
+    def is_support_R(self):
+        return True
+    def is_support_L(self):
+        return True
+    def is_support_D(self):
+        return True
+    def is_support_V(self):
+        if self.__is_30X():
+            return False
+        return True
+    def is_support_U(self):        
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_W(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_T(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_C(self):
+        return True
+    def is_support_S(self):
+        return True
+    # Status operations
+    def is_support_Q(self):
+        return True
+    def is_support_Ex(self):
+        return True
+    def is_support_Qu(self):
+        return True
+    def is_support_QuV(self):
+        return True
+    def is_support_QuP(self):
+        return True
+    def is_support_QuS(self):
+        return True
+    def is_support_QuD(self):
+        return True
+    def is_support_QuB(self):
+        if self.__is_30X():
+            return False
+        return True
+    def is_support_QuM(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_QuA(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_QuO(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_QuW(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_QuK(self):
+        if self.__is_30X():
+            return True
+        return False
+    def is_support_QuE(self):
+        if self.__is_30X():
+            return True
+        return False
+    # I/O and others
+    def is_support_O(self):
+        return True
+    def is_support_I(self):
+        return True
+    def is_support_P(self):
+        if self.__is_30X():
+            return True
+        return False
+        
 
    
 class Session:
