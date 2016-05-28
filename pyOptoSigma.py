@@ -529,7 +529,7 @@ class Session:
           return response
        self.__print('[SUB] ' + command, level=2)
        
-    def is_busy(self):
+    def is_busy(self, stage=None, func=lambda x:x):
         ''' Whether the controller is under operation or not.
         
         If the controller is busy, only stop and status retrieve commands are accepted and other commands will fail.
@@ -538,18 +538,30 @@ class Session:
         -------
         busy : bool
             The controller is busy or not.
+        stage : int, tuple, list, or None, optional
+            If the controller is HIT instruction set, busy status of each slave can be obtainded.
+            In this case, specify the slave to get status. If None, the first slave is obtained.
+        func : callable
+            In HIT mode and multiple stages are specified, busy statuses can be summarized.
+            Set all or any for reduce results. Otherwise, each status is returnd by tuple.
             
         See also
         --------
         is_ready()
         '''
+        if self.controller.is_SHOT():
+            return self.__is_busy_shot()
+        else:
+            raise NotImplemented() # TODO: HIT mode.
+        
+    def __is_busy_shot(self):
         if not self.controller.is_support_Ex():
             if not self.controller.is_support_Q():
                 raise Not_Supported()
             return self.get_status()[3].startswith('B')
         return self.__send('!:', no_response=False).startswith('B')
         
-    def is_ready(self):
+    def is_ready(self, stage=None, func=lambda x:x):
         ''' Whether the controller is ready for operation or not.
         
         If the controller is ready, all commands are acceptable, otherwise limited.
@@ -558,24 +570,42 @@ class Session:
         -------
         busy : bool
             The controller is ready or not.
+        stage : int, tuple, list, or None, optional
+            If the controller is HIT instruction set, busy status of each slave can be obtainded.
+            In this case, specify the slave to get status. If None, the first slave is obtained.
+        func : callable
+            In HIT mode and multiple stages are specified, busy statuses can be summarized.
+            Set all or any for reduce results. Otherwise, each status is returnd by tuple.
             
         See also
         --------
         is_busy()
         '''
+        if self.controller.is_SHOT():
+            return self.__is_ready_shot()
+        else:
+            raise NotImplemented() # TODO: HIT mode.
+        
+    def __is_ready_shot(self):
         if not self.controller.is_support_Ex():
             if not self.controller.is_support_Q():
                 raise Not_Supported()
             return self.get_status()[3].startswith('R')
         return self.__send('!:', no_response=False).startswith('R')
        
-    def __wait_for_ready(self):
+    def __wait_for_ready(self, stage=None, func=lambda x:x):
        self.__print('Waiting.')
-       while self.is_busy():
+       while self.is_busy(stage=stage, func=func):
           self.__print('     sleep ' + str(self.wait_time), level=2)
           time.sleep(self.wait_time)
        
     def __load_divisions(self):
+        if self.controller.is_SHOT():
+            self.__load_divisions_shot()
+        else:
+            raise NotImplemented() #TODO: HIT mode.
+            
+    def __load_divisions_shot(self):
         self.__print('Load division settings.')
         if not self.controller.is_support_Qu():
             raise Not_Supported()
@@ -605,7 +635,7 @@ class Session:
         if self.controller.is_SHOT():
             self.__reset_shot(stage, all_stages, mechanical, wait_for_finish)
         elif self.controller.is_HIT():
-            raise NotImplemented()
+            raise NotImplemented() # TODO: HIT-mode.
             
     def __reset_shot(self, stage, all_stages, mechanical, wait_for_finish):
         if mechanical:
@@ -663,6 +693,12 @@ class Session:
         wait_for_finish : bool, optional
             If True, check status and wait for operation finish.
         '''
+        if self.controller.is_SHOT():
+            self.__move_shot(stage, amount, in_pulse, absolute, wait_for_finish)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+            
+    def __move_shot(self, stage, amount, in_pulse, absolute, wait_for_finish):
         if not self.controller.is_support_G():
             raise Not_Supported()
         msg = ['Move']
@@ -708,7 +744,6 @@ class Session:
         if wait_for_finish:
             self.__wait_for_ready()
             
-            
     def jog(self, stage=1, directions=1):
         '''Jog drive. Continue moving before arriving the limit point or system limit.
         
@@ -726,6 +761,12 @@ class Session:
         directions : int, tuple, or list
             Jog drive directions. Only a sign of a number is used.
         '''
+        if self.controller.is_SHOT():
+            self.__jog_shot(stage, directions)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+        
+    def __jog_shot(self, stage, directions):
         if not self.controller.is_support_J():
             raise Not_Supported()
         if not self.controller.is_support_G():
@@ -741,6 +782,7 @@ class Session:
             self.__print('Jog drive, single stage.')
             self.__send(com)
             self.__send('G:')
+        
             
     def stop(self, stage=1, all_stages=False, emergency=False):
         ''' Stop stages.
@@ -756,6 +798,12 @@ class Session:
             This may cause a big reaction when a stage is moving fast. 
             Also, this mode does not check the capability of the controller to this operation.
         '''
+        if self.controller.is_SHOT():
+            self.__stop_shot(stage, all_stages, emergency)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+        
+    def __stop_shot(self, stage, all_stages, emergency):
         if emergency:
             self.__send('L:E')
             self.__print('Emergency stop.')
@@ -769,6 +817,7 @@ class Session:
             self.__print('Stop stage #'+str(stage))
             self.__send('L:'+str(stage))
         self.__wait_for_ready()
+        
         
     def abort(self):
         ''' Equivalent to stop(emergency = True)
@@ -789,6 +838,12 @@ class Session:
         all_stages : bool, optional
             If True, all stages' origin point are set.
         '''
+        if self.controller.is_SHOT():
+            self.__set_origin_shot(stage, all_stages)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+            
+    def __set_origin_shot(self, stage, all_stages):
         if not self.controller.is_support_R():
             raise Not_Supported()
         if all_stages:
@@ -797,6 +852,7 @@ class Session:
         else:
             self.__print('Set origin for stage #'+str(stage))
             self.__send('R:'+str(stage))
+        
 
     def __check_SFR(self, s, f, r):
         s_lim, f_lim, r_lim = self.controller.get_support_speed_ranges()    
@@ -818,6 +874,12 @@ class Session:
             Speed parameters of each stage.
             S: the slowest speed, F: the fastest speed, R: acceleration and deceleration time.
         '''
+        if self.controller.is_SHOT():
+            self.__set_speed_shot(stage, S, F, R)
+        else:
+            raise NotImplemented() #TODO: HIT mode.
+            
+    def __set_speed_shot(self, stage, S, F, R):
         if not self.controller.is_support_D():
             raise Not_Supported()
         if isinstance(S, (tuple, list)):
@@ -843,6 +905,12 @@ class Session:
             Speed parameters of each stage.
             S: the slowest speed, F: the fastest speed, R: acceleration and deceleration time.
         '''
+        if self.controller.is_SHOT():
+            self.__set_speed_reset_drive_shot(stage, S, F, R)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+            
+    def __set_speed_reset_drive_shot(self, stage, S, F, R):
         if not self.controller.is_support_V():
             raise Not_Supported()
         if isinstance(S, (tuple, list)):
@@ -867,6 +935,12 @@ class Session:
         mode : Excitation
             Excitation mode.
         '''
+        if self.controller.is_SHOT():
+            self.__set_excitation_mode_shot(stage, mode, all_stages)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+            
+    def __set_excitation_mode_shot(self, stage, mode, all_stages):
         if not self.controller.is_support_C():
             raise Not_Supported()
         if all_stages:
@@ -887,6 +961,12 @@ class Session:
             Divisions of a stepping moter.
             When a stage is operated by closed-loop method, Higher value is recommended.
         '''
+        if self.controller.is_SHOT():
+            self.__set_division_shot(stage, division)
+        else:
+            raise NotImplemented() # TODO: HIT-mode.
+    
+    def __set_division_shot(self, stage, division):
         if not self.controller.is_support_S():
             raise Not_Supported()
         if not division in self.controller.get_support_devisions():
@@ -894,7 +974,7 @@ class Session:
         self.__print('Set division of #'+str(stage)+' to '+str(division))
         self.__send('S:' + str(stage) + str(division))
         self.__load_divisions()
-    
+        
     def get_status(self):
         ''' Get status of stages and the controller.
         
@@ -909,6 +989,12 @@ class Session:
         ack3 : str
             'B' or 'R', which represent the controller is busy or ready, respectively.
         '''
+        if self.controller.is_SHOT():
+            return self.__get_status_shot()
+        else:
+            raise NotImplemented() # TODO: HIT mode.
+        
+    def __get_status_shot(self):
         if not self.controller.is_support_Q():
             raise Not_Supported()
         response = self.__send('Q:', no_response=False)
@@ -936,7 +1022,7 @@ class Session:
         else:
             if not self.divisions_loaded:
                 self.__load_divisions()
-            return [p * get_value_per_pulse(s) / d in p, s, d in zip(positions, self.stages, self.divisions)]
+            return [p * get_value_per_pulse(s) / d for p, s, d in zip(positions, self.stages, self.divisions)]
         
 def __test_304GS_SGSP46():
     ''' Test code #1 '''
