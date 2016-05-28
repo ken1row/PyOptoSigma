@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+import sys
+if sys.version_info[0] < 3:
+    raise ImportError('This module only supports Python 3.4 or later. Try use `python3`')
+
 from enum import Enum, IntEnum
 import serial
 import time
