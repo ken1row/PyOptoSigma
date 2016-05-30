@@ -12,6 +12,7 @@ class Bad_Command_Parameter_or_Timing(Exception):
     '''Raised if the command, parameter, or timing is wrong.
     
     This exception raises when the controller responds 'NG'.
+    It offen occurs when drive commands are sent to BUSY controller.
     '''
     pass
 class Not_Supported(Exception):
@@ -20,12 +21,26 @@ class Not_Supported(Exception):
     pass
 
 class Undefined_Controller(Exception):
+    ''' Raised if the controller is not defined or implemented. '''
     pass
 
 class Undefined_Stage(Exception):
+    ''' Raised if the stage is not defined or implemented. '''
     pass
 
 class Controllers(Enum):
+    ''' Stage controller's type.
+    
+    Attributes
+    ----------
+    SHOT_302GS
+    SHOT_304GS
+    SHOT_702
+    
+    TODO
+    ----
+    Other controllers such as OSM and HIT series.
+    '''
     SHOT_302GS = 1
     SHOT_304GS = 2
     SHOT_702 = 3
@@ -34,20 +49,58 @@ class Controllers(Enum):
     
 class Controller_Modes(Enum):
     ''' Instruction set of controller's operation.
+    
+    Attributes
+    ----------
+    SHOT
+        SHOT instruction set.
+    SHOT_enhanced
+        Enhanced SHOT instruction set.
+    HIT
+        HIT instruction set.
     '''
     SHOT = 0
     SHOT_enhanced = 1
     HIT = 2
     
 class Comm_ack(Enum):
+    ''' COMM-ACK status of the controller.
+    
+    Attributes
+    ----------
+    MAIN
+    SUB
+    '''
     MAIN = 0
     SUB = 1
     
 class Excitation(IntEnum):
+    ''' Excitation mode of the stepping moter.
+    
+    Attributes
+    ----------
+    Free
+    Hold
+    '''
     Free = 0
     Hold = 1
 
 class Stages(IntEnum):
+    ''' Stage type.
+    
+    Attributes
+    ----------
+    SGSP**_**
+        SGSP series stages. e.g. Both SGSP46-500(X) and SGSP46-500(Z) are same type: SGSP46_500.
+    SGSP_**YAW
+    SGSP_**A**
+    OSMS**-**
+        Compatible stages to SGSP series.
+    HST_**
+    HST_**YAW
+    HPS**_**
+    TAMM**_**
+    '''
     #
     # Linear translation stages
     #
@@ -218,30 +271,90 @@ def __get_baserate(stype):
     
     
 def is_linear_stage(stype):
+    ''' Returns if the stage is a linear translation stage or not.
+    
+    Parameters
+    ----------
+    stype : Stages
+        Stage type.
+        
+    Returns
+    -------
+    res : bool
+        Check result.
+    '''
     return int(stype) > int(Stages.Linear_stage) and int(stype) < int(Stages.Linear_stage_end)
     
 def is_rotation_stage(stype):
+    ''' Returns if the stage is a rotation stage or not.
+    
+    Parameters
+    ----------
+    stype : Stages
+        Stage type.
+        
+    Returns
+    -------
+    res : bool
+        Check result.
+    '''
     return int(stype) > int(Stages.Rotation_stage) and int(stype) < int(Stages.Rotation_stage_end)
     
 def is_gonio_stage(stype):
+    ''' Returns if the stage is a gonio stage or not.
+    
+    Parameters
+    ----------
+    stype : Stages
+        Stage type.
+        
+    Returns
+    -------
+    res : bool
+        Check result.
+    '''
     return int(stype) > int(Stages.Gonio_stage) and int(stype) < int(Stages.Gonio_stage_end)
     
 def get_value_per_pulse(stype):
+    ''' Get translation step per single pulse.
+    
+    Parameters
+    ----------
+    stype : Stages
+        Stage type.
+        
+    Returns
+    -------
+    val : int
+        Translation resolution per single pulse.
+        This value is a full pulse (1 division).
+        If a stage is a translation stage, the unit is micro-meters,
+        if a rotation or gonio stage, the unit is milli-degree.
+    '''
     return __get_baserate(stype)
 
-def get_micro_meter_per_pulse(stype):
-    if not is_linear_stage(stype):
-        raise Undefined_Stage(stype.name + ' is not a linear stage.')
-    return __get_baserate(stype)
-    
-def get_milli_degree_per_pulse(stype):
-    if not (is_rotation_stage(stype) or is_gonio_stage(stype)):
-        raise Undefined_Stage(stype.name + ' is not a rotation stage.')
-    return __get_baserate(stype)
+#def get_micro_meter_per_pulse(stype):
+#    if not is_linear_stage(stype):
+#        raise Undefined_Stage(stype.name + ' is not a linear stage.')
+#    return __get_baserate(stype)
+#    
+#def get_milli_degree_per_pulse(stype):
+#    if not (is_rotation_stage(stype) or is_gonio_stage(stype)):
+#        raise Undefined_Stage(stype.name + ' is not a rotation stage.')
+#    return __get_baserate(stype)
     
 
 class Controller:
     '''Class for a controller's parameters.
+    
+    Parameters
+    ----------
+    ctype : Controllers
+        Type of the controller.
+        
+    Raises
+    ------
+    Undefined_Controller
     
     Attributes
     ----------
@@ -254,25 +367,6 @@ class Controller:
     comm_ack : Comm_ack
         COMM/ACK mode.
         
-    Methods
-    -------
-    get_support_baudrates()
-        Get the tuple of supported baudrates of this controller.
-    get_support_axes()
-        Get the number of controllable stages.
-    get_support_speed_ranges()
-        Get the range of speed values.
-    is_support_[COM]() : bool
-        Returns whether the controller supports [COM] operation.
-        
-    Parameters
-    ----------
-    ctype : Controllers
-        Type of the controller.
-        
-    Raises
-    ------
-    Undefined_Controller
     '''
     def __init__(self, ctype):
         self.ctype = ctype
@@ -310,6 +404,13 @@ class Controller:
         return self.cmode is Controller_Modes.HIT
     
     def get_support_baudrates(self):
+        ''' Get the tuple of supported baudrates of this controller.
+        
+        Returns
+        -------
+        baudrates : tuple
+            A list of supported baudrates.
+        '''
         if self.__is_30X():
             return (4800, 9600, 19200, 38400)
         if self.__is_70X():
@@ -317,12 +418,24 @@ class Controller:
         return ()
         
     def get_support_devisions(self):
+        ''' Get the tuple of supported divisions of this controller.
+        
+        Returns
+        -------
+        divisions : tuple
+            A list of supportd division values.
+        '''
         return (1,2,4,5,8,10,20,25,40,50,80,100,125,200,250)
     
     def get_support_axes(self):
-        ''' Get the number of controllable stages.
+        ''' Get the maximum number of controllable stages.
         
         This method does not check the value of AXIS memory switch nor how many stages are connected.
+        
+        Returns
+        -------
+        num : int
+            The number of controllable stages.
         '''
         if self.ctype == Controllers.SHOT_304GS:
             return 4
@@ -344,6 +457,17 @@ class Controller:
     def is_support_M(self):
         return True
     def is_support_A(self):
+        ''' Check if the controller supports "A" command.
+        
+        Returns
+        -------
+        supports : bool
+            Availability.
+            
+        Notes
+        -----
+        Other functions such as is_support_[Com] are same format.
+        '''
         return True
     def is_support_E(self):
         if self.__is_30X():
@@ -441,30 +565,6 @@ class Controller:
 class Session:
     '''Session of controlling OptoSigma's stage.
     
-    Attributes
-    ----------
-    controller : Controller
-        Parameters of the controller.
-    stages : array of Stages
-        Parameters of connected stages.
-    
-    Methods
-    -------
-    append_stage(stage)
-        Add stage parameter.
-    connect(portname = '/dev/ttyUSB0')
-        Port name to connect to the controller.
-    reset()
-        Reset or initialize the position of stages.
-    initialize()
-        Initialize the position of stages to the mechanical origin.
-    move()
-        Change the position of the stages.
-    jog()
-        Continue moving stages
-    is_busy()
-        Check if the controller is under operation
-    
     Parameters
     ----------
     ctype : Controllers
@@ -473,6 +573,14 @@ class Session:
         More messages are output as higher value is set.
     wait_time : int, optional
         Polling time while waiting busy status.
+        
+    Attributes
+    ----------
+    controller : Controller
+        Parameters of the controller.
+    stages : array of Stages
+        Parameters of connected stages.    
+    
     '''
     def __init__(self, ctype, verbose_level=0, wait_time=2.):
         self.controller = Controller(ctype)
@@ -485,7 +593,7 @@ class Session:
         self.divisions_loaded = False
                        
     def append_stage(self, stype):
-        ''' Set new stage parameter.
+        ''' Add a new stage parameter.
         
         Setting stage parameters is not mandatory when all operation is done by in_pulse mode.
         
@@ -504,7 +612,7 @@ class Session:
         Parameters
         ----------
         portname : str, optional
-            Port name of the machine where the controller is connected.
+            Port name of the RS232C where the controller is connected.
         '''
         self.port = serial.Serial(port    = portname,
                              baudrate     = self.controller.baudrate,
@@ -538,16 +646,19 @@ class Session:
         
         If the controller is busy, only stop and status retrieve commands are accepted and other commands will fail.
         
-        Returns
-        -------
-        busy : bool
-            The controller is busy or not.
+        Parameters
+        ----------        
         stage : int, tuple, list, or None, optional
             If the controller is HIT instruction set, busy status of each slave can be obtainded.
             In this case, specify the slave to get status. If None, the first slave is obtained.
         func : callable
             In HIT mode and multiple stages are specified, busy statuses can be summarized.
             Set all or any for reduce results. Otherwise, each status is returnd by tuple.
+        
+        Returns
+        -------
+        busy : bool
+            The controller is busy or not.
             
         See also
         --------
@@ -570,16 +681,19 @@ class Session:
         
         If the controller is ready, all commands are acceptable, otherwise limited.
         
-        Returns
-        -------
-        busy : bool
-            The controller is ready or not.
+        Parameters
+        ----------        
         stage : int, tuple, list, or None, optional
             If the controller is HIT instruction set, busy status of each slave can be obtainded.
             In this case, specify the slave to get status. If None, the first slave is obtained.
         func : callable
             In HIT mode and multiple stages are specified, busy statuses can be summarized.
             Set all or any for reduce results. Otherwise, each status is returnd by tuple.
+        
+        Returns
+        -------
+        busy : bool
+            The controller is ready or not.
             
         See also
         --------
@@ -635,6 +749,10 @@ class Session:
             If True, stages will reset to the mechanical origin, otherwise, to the electrical zero point.
         wait_for_finish : bool, optional
             If True, check status and wait for operation finish.
+            
+        See also
+        --------
+        initialize(), move()
         '''
         if self.controller.is_SHOT():
             self.__reset_shot(stage, all_stages, mechanical, wait_for_finish)
@@ -696,6 +814,10 @@ class Session:
             Represents specified values are absolute position or relative travel.
         wait_for_finish : bool, optional
             If True, check status and wait for operation finish.
+            
+        See also
+        --------
+        reset(), jog(), stop(), abort()
         '''
         if self.controller.is_SHOT():
             self.__move_shot(stage, amount, in_pulse, absolute, wait_for_finish)
@@ -764,6 +886,10 @@ class Session:
             The target stage number. If directions are given by tuple or list, this value is ignored.
         directions : int, tuple, or list
             Jog drive directions. Only a sign of a number is used.
+            
+        See also
+        --------
+        stop(), abort(), get_status(), set_origin()
         '''
         if self.controller.is_SHOT():
             self.__jog_shot(stage, directions)
@@ -801,6 +927,10 @@ class Session:
             Force stop all stages immediately. All operations are aborted. 
             This may cause a big reaction when a stage is moving fast. 
             Also, this mode does not check the capability of the controller to this operation.
+            
+        See also
+        --------
+        abort(), jog()
         '''
         if self.controller.is_SHOT():
             self.__stop_shot(stage, all_stages, emergency)
@@ -824,7 +954,7 @@ class Session:
         
         
     def abort(self):
-        ''' Equivalent to stop(emergency = True)
+        ''' Equivalent to stop(emergency = True).
         
         See also
         --------
@@ -835,12 +965,16 @@ class Session:
     def set_origin(self, stage=1, all_stages=False):
         ''' Set the electrical zero point of a stage at current position.
         
-        Paramters
-        ---------
+        Parameters
+        ----------
         stage : int
             Target stage number.
         all_stages : bool, optional
             If True, all stages' origin point are set.
+            
+        See also
+        --------
+        reset(), initialize()
         '''
         if self.controller.is_SHOT():
             self.__set_origin_shot(stage, all_stages)
@@ -877,6 +1011,10 @@ class Session:
         S, F, R : int, tuple, or list
             Speed parameters of each stage.
             S: the slowest speed, F: the fastest speed, R: acceleration and deceleration time.
+            
+        See also
+        --------
+        set_speed_reset_drive()
         '''
         if self.controller.is_SHOT():
             self.__set_speed_shot(stage, S, F, R)
@@ -908,6 +1046,10 @@ class Session:
         S, F, R : int, tuple, or list
             Speed parameters of each stage.
             S: the slowest speed, F: the fastest speed, R: acceleration and deceleration time.
+            
+        See also
+        --------
+        set_speed()
         '''
         if self.controller.is_SHOT():
             self.__set_speed_reset_drive_shot(stage, S, F, R)
@@ -992,6 +1134,10 @@ class Session:
             'K' represents all stages are stable, and other strings represent one or more stages are stopped at limit sensor.
         ack3 : str
             'B' or 'R', which represent the controller is busy or ready, respectively.
+            
+        See also
+        --------
+        get_position(), is_busy(), is_ready()
         '''
         if self.controller.is_SHOT():
             return self.__get_status_shot()
@@ -1019,6 +1165,10 @@ class Session:
         -------
         positions : list
             List of positions of stages.
+            
+        See also
+        --------
+        get_status()
         '''
         positions =  self.get_status()[0]
         if in_pulse:
