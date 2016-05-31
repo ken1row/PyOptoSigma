@@ -1,11 +1,13 @@
 # PyOptoSigma
-Python module for operating stepping moter stages manufactured by OptoSigma and Sigma Koki
+Python module for operating stepping moter stages manufactured by OptoSigma and Sigma Koki.
 
 シグマ光機（OptoSigma）のステージコントローラを Python で制御するモジュール．
 
 # Dependencies installation
 
 This module depends on ```python3``` and ```pyserial```.
+Please note that the supported Python version is 3.4 or greater, and Python 2.x, 3.1, 3.2, and 3.3 are not supported.
+
 In Ubuntu 14.04, you should install python3 packages first.
 ```
  sudo apt-get install python3-pip
@@ -21,9 +23,24 @@ To access to serial ports without sudo privileges, the user must belong to  ```d
 ```
 where, [user_name] is the user name, which can be confirmed by ```id``` command.
 
+# Install
+
+There are two ways to install this module.
+
+1. Use pip
+ ```
+  sudo pip3 install pyOptoSigma
+ ```
+ 
+2. From source
+ ```
+  git clone https://github.com/ken1row/PyOptoSigma.git
+  cd PyOptoSigma
+  sudo python3 install.py install
+ ```
+
 # Get started
 
-Copy all python scripts to your current directory.
 The following code (python3) will work for example, to rotate 45 degree.
 ```
  from pyOptoSigma import *
@@ -33,9 +50,19 @@ The following code (python3) will work for example, to rotate 45 degree.
  stages.move(amount=45000)                  # rotate 45 degree.
 ```
 
-# See also
-* Documentation is under construction (See Issues).
-* A test code written at the end of ```pyOptoSigma.py``` will help more operations.
+# Build API Documents
+Documents can be generated using ```sphinx```. Firstly, install the latest sphinx via pip.
+```
+sudo pip install sphinx --upgrade
+```
+
+Then, compile documents using sphinx.
+```
+make html
+```
+
+Documents will be generated in ```build/html``` directory.
+
 
 # Confirmed Environments
 Listed below are confirmed to work propery. But this module is not limited to the listed equipments.
