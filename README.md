@@ -36,7 +36,7 @@ There are two ways to install this module.
  ```
   git clone https://github.com/ken1row/PyOptoSigma.git
   cd PyOptoSigma
-  sudo python3 install.py install
+  sudo python3 setup.py install
  ```
 
 # Get started
