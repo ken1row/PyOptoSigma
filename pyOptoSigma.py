@@ -44,6 +44,8 @@ class Controllers(Enum):
     SHOT_302GS = 1
     SHOT_304GS = 2
     SHOT_702 = 3
+    GSC_01 = 4
+    GSC_02 = 5
     Undefined = 99
     
     
@@ -61,7 +63,8 @@ class Controller_Modes(Enum):
     '''
     SHOT = 0
     SHOT_enhanced = 1
-    HIT = 2
+    SHOT_modified = 2
+    HIT = 3
     
 class Comm_ack(Enum):
     ''' COMM-ACK status of the controller.
@@ -385,6 +388,12 @@ class Controller:
         elif ctype is Controllers.SHOT_702:
             self.baudrate = 38400
             self.cmode = Controller_Modes.SHOT
+        elif ctype is Controllers.GSC_01:
+            self.baudrate = 9600
+            self.cmode = Controller_Modes.SHOT_enhanced
+        elif ctype is Controllers.GSC_02:
+            self.baudrate = 9600
+            self.cmode = Controller_Modes.SHOT_modified
         else:
             raise Undefined_Controller('Controller is undefined.')
     
@@ -393,12 +402,18 @@ class Controller:
     def __is_70X(self):
         return self.ctype is Controllers.SHOT_702
     
+    def __is_GSC(self):
+        return self.ctype is Controllers.GSC_01 or self.ctype is Controllers.GSC_02
+        
     def is_SHOT(self):
         if self.cmode is Controller_Modes.SHOT:
             return True
         if self.cmode is Controller_Modes.SHOT_enhanced:
             return True
+        if self.cmode is Controller_Modes.SHOT_modified:
+            return False # incompatible instruction set. e.g.) H: and G commands.
         return False
+    
         
     def is_HIT(self):
         return self.cmode is Controller_Modes.HIT
@@ -411,10 +426,12 @@ class Controller:
         baudrates : tuple
             A list of supported baudrates.
         '''
-        if self.__is_30X():
+        if self.__is_30X() or  self.ctype is Controllers.GSC_01:
             return (4800, 9600, 19200, 38400)
         if self.__is_70X():
             return (38400, )
+        if self.ctype is Controllers.GSC_02:
+            return (2400, 4800, 9600, 19200)
         return ()
         
     def get_support_devisions(self):
@@ -425,6 +442,10 @@ class Controller:
         divisions : tuple
             A list of supportd division values.
         '''
+        if self.ctype is Controllers.GSC_01:
+            return (1, 2)
+        if self.ctype is Controllers.GSC_02:
+            return (2, )
         return (1,2,4,5,8,10,20,25,40,50,80,100,125,200,250)
     
     def get_support_axes(self):
@@ -437,8 +458,10 @@ class Controller:
         num : int
             The number of controllable stages.
         '''
-        if self.ctype == Controllers.SHOT_304GS:
+        if self.ctype is Controllers.SHOT_304GS:
             return 4
+        if self.ctype is Controllers.GSC_01:
+            return 1
         return 2
         
     def get_support_speed_ranges(self):
@@ -448,6 +471,8 @@ class Controller:
         -------
         ((S_min, S_max), (F_min, F_max), (R_min, R_max))
         '''
+        if self.__is_GSC():
+            return ((100, 20000), (100, 20000), (0, 1000))
         return ((1, 500000), (1, 500000), (0, 1000))        
         
     # Whether the controller supports specific command.
@@ -468,6 +493,8 @@ class Controller:
         -----
         Other functions such as is_support_[Com] are same format.
         '''
+        if self.ctype is Controllers.GSC_02:
+            return False
         return True
     def is_support_E(self):
         if self.__is_30X():
@@ -490,7 +517,13 @@ class Controller:
     def is_support_V(self):
         if self.__is_30X():
             return False
+        if self.__is_GSC(): # This is speed command. V:J is enhanced instruction set.
+            return False
         return True
+    def is_support_VN(self): # Enhanced instruction set
+        return self.is_support_SN()
+    def is_support_VJ(self): # Enhanced instruction set
+        return self.is_support_SN()
     def is_support_U(self):        
         if self.__is_30X():
             return True
@@ -506,7 +539,15 @@ class Controller:
     def is_support_C(self):
         return True
     def is_support_S(self):
+        if self.__is_GSC(): # Division command not supported. S:N is enhanced instruction set.
+            return False
         return True
+    def is_support_SN(self): # Enhanced instruction set
+        if self.ctype is Controllers.GSC_01:
+            return True
+        return False
+    def is_support_SJ(self): # Enhanced instruction set
+        return self.is_support_SN()
     # Status operations
     def is_support_Q(self):
         return True
@@ -517,12 +558,20 @@ class Controller:
     def is_support_QuV(self):
         return True
     def is_support_QuP(self):
+        if self.__is_GSC():
+            return False
         return True
     def is_support_QuS(self):
+        if self.__is_GSC():
+            return False
         return True
     def is_support_QuD(self):
+        if self.__is_GSC():
+            return False
         return True
     def is_support_QuB(self):
+        if self.__is_GSC():
+            return False
         if self.__is_30X():
             return False
         return True
@@ -550,10 +599,22 @@ class Controller:
         if self.__is_30X():
             return True
         return False
+    def is_support_QuL(self): # Enhanced instruction set
+        if self.ctype is Controllers.GSC_01:
+            return True
+        return False
+    def is_support_QuHyph(self):
+        if self.ctype is Controllers.GSC_01:
+            return True
+        return False
     # I/O and others
     def is_support_O(self):
+        if self.ctype is Controllers.GSC_02:
+            return False
         return True
     def is_support_I(self):
+        if self.ctype is Controllers.GSC_02:
+            return False
         return True
     def is_support_P(self):
         if self.__is_30X():
@@ -718,7 +779,9 @@ class Session:
           time.sleep(self.wait_time)
        
     def __load_divisions(self):
-        if self.controller.is_SHOT():
+        if self.controller.__is_GSC():
+            self.divisions = [2 for v in self.stages]
+        elif self.controller.is_SHOT():
             self.__load_divisions_shot()
         else:
             raise NotImplemented() #TODO: HIT mode.
@@ -736,7 +799,7 @@ class Session:
     def __direction(self, pulse):
         return '-' if pulse < 0 else '+'
         
-    def reset(self, stage=1, all_stages=False, mechanical=False, wait_for_finish=False):
+    def reset(self, stage=1, all_stages=False, mechanical=False, wait_for_finish=False, direction=None):
         ''' Reset or initialize the position of stages.
         
         Parameters
@@ -749,6 +812,8 @@ class Session:
             If True, stages will reset to the mechanical origin, otherwise, to the electrical zero point.
         wait_for_finish : bool, optional
             If True, check status and wait for operation finish.
+        direction : tuple or list or None, optional
+            In GSC-02's mechanical reset, the direction of each stage can be selected. None for all minus.
             
         See also
         --------
@@ -758,6 +823,8 @@ class Session:
             self.__reset_shot(stage, all_stages, mechanical, wait_for_finish)
         elif self.controller.is_HIT():
             raise NotImplemented() # TODO: HIT-mode.
+        elif self.controller.cmode is Controller_Modes.SHOT_modified:
+            self.__reset_gsc2(self, stage, all_stages, mechanical, wait_for_finish, direction)
             
     def __reset_shot(self, stage, all_stages, mechanical, wait_for_finish):
         if mechanical:
@@ -786,6 +853,26 @@ class Session:
                 
         if wait_for_finish:
             self.__wait_for_ready()
+    
+    def __reset_gsc2(self, stage, all_stages, mechanical, wait_for_finish, direction):
+        if mechanical:
+            if all_stages:
+                if direction != direction or isinstance(direction, int):
+                    self.__print('Direction set to minus.', level=2)
+                    direction = [-1 for v in self.stages]
+                self.__print('Mechanical reset, all_stages, ' + ' '.join([str(v) for v in direction]))
+                args = [self.__direction(v) for v in direction]
+                self.__send('H:W' + ''.join(args))
+            else:
+                if not isinstance(direction, int):
+                    self.__print('Direction set to minus', level=2)
+                    direction = -1
+                self.__print('Mechanical reset, #' + str(stage))
+                self.__send('H:' + str(stage) + self.__direction(direction))
+            if wait_for_finish:
+                self.__wait_for_ready()
+        else:
+            raise Not_Supported('GSC-02 does not support electrical reset.')
         
             
     def initialize(self):
@@ -819,12 +906,14 @@ class Session:
         --------
         reset(), jog(), stop(), abort()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.cmode is Controller_Modes.SHOT_modified:
+            self.__move_shot(stage, amount, in_pulse, absolute, wait_for_finish, 'G')
+        elif self.controller.is_SHOT():
             self.__move_shot(stage, amount, in_pulse, absolute, wait_for_finish)
         else:
             raise NotImplemented() # TODO: HIT-mode.
             
-    def __move_shot(self, stage, amount, in_pulse, absolute, wait_for_finish):
+    def __move_shot(self, stage, amount, in_pulse, absolute, wait_for_finish, drive_com='G:'):
         if not self.controller.is_support_G():
             raise Not_Supported()
         msg = ['Move']
@@ -850,7 +939,7 @@ class Session:
             com.extend([self.__direction(v)+'P'+str(abs(v)) for v in [int(m) for m in amount]])
             self.__print(' '.join(msg))
             self.__send(''.join(com))
-            self.__send('G:')
+            self.__send(drive_com)
         else:
             com.append(str(stage))
             com.append(self.__direction(amount))
@@ -865,10 +954,11 @@ class Session:
             com.append(str(abs(int(amount))))
             self.__print(' '.join(msg))
             self.__send(''.join(com))
-            self.__send('G:')
+            self.__send(drive_com)
             
         if wait_for_finish:
             self.__wait_for_ready()
+                    
             
     def jog(self, stage=1, directions=1):
         '''Jog drive. Continue moving before arriving the limit point or system limit.
@@ -891,12 +981,14 @@ class Session:
         --------
         stop(), abort(), get_status(), set_origin()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.cmode is Controller_Modes.SHOT_modified:
+            self.__jog_shot(stage, directions, 'G')
+        elif self.controller.is_SHOT():
             self.__jog_shot(stage, directions)
         else:
             raise NotImplemented() # TODO: HIT-mode.
         
-    def __jog_shot(self, stage, directions):
+    def __jog_shot(self, stage, directions, drive_com='G:'):
         if not self.controller.is_support_J():
             raise Not_Supported()
         if not self.controller.is_support_G():
@@ -906,12 +998,12 @@ class Session:
             com = 'J:W' + ''.join(arg)
             self.__print('Jog drive, multi-stages.')
             self.__send(com)
-            self.__send('G:')
+            self.__send(drive_com)
         else:
             com = 'J:'+str(stage)+self.__direction(directions)
             self.__print('Jog drive, single stage.')
             self.__send(com)
-            self.__send('G:')
+            self.__send(drive_com)
         
             
     def stop(self, stage=1, all_stages=False, emergency=False):
@@ -932,7 +1024,7 @@ class Session:
         --------
         abort(), jog()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.is_SHOT() or self.controller.cmode is Controller_Modes.SHOT_modified:
             self.__stop_shot(stage, all_stages, emergency)
         else:
             raise NotImplemented() # TODO: HIT-mode.
@@ -976,7 +1068,7 @@ class Session:
         --------
         reset(), initialize()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.is_SHOT() or self.controller.cmode is Controller_Modes.SHOT_modified:
             self.__set_origin_shot(stage, all_stages)
         else:
             raise NotImplemented() # TODO: HIT-mode.
@@ -1016,7 +1108,7 @@ class Session:
         --------
         set_speed_reset_drive()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.is_SHOT() or self.controller.cmode is Controller_Modes.SHOT_modified:
             self.__set_speed_shot(stage, S, F, R)
         else:
             raise NotImplemented() #TODO: HIT mode.
@@ -1081,7 +1173,7 @@ class Session:
         mode : Excitation
             Excitation mode.
         '''
-        if self.controller.is_SHOT():
+        if self.controller.is_SHOT() or self.controller.cmode is Controller_Modes.SHOT_modified:
             self.__set_excitation_mode_shot(stage, mode, all_stages)
         else:
             raise NotImplemented() # TODO: HIT-mode.
@@ -1139,7 +1231,7 @@ class Session:
         --------
         get_position(), is_busy(), is_ready()
         '''
-        if self.controller.is_SHOT():
+        if self.controller.is_SHOT() or self.controller.cmode is Controller_Modes.SHOT_modified:
             return self.__get_status_shot()
         else:
             raise NotImplemented() # TODO: HIT mode.
