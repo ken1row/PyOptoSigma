@@ -47,7 +47,7 @@ The following code (python3) will work for example, to rotate 45 degree.
  stages = Session(Controllers.SHOT_702)     # specify your stage controller.
  stages.append_stage(Stages.SGSP_120YAW)    # add your stage accordingly.
  stages.connect()                           # connect to a serial port.
- stages.move(amount=45000)                  # rotate 45 degree.
+ stages.move(amount=45000)                  # rotate 45 degree. (45000 milli-degree)
 ```
 
 # Build API Documents
@@ -65,7 +65,13 @@ Documents will be generated in ```build/html``` directory.
 
 
 # Confirmed Environments
-Listed below are confirmed to work propery. But this module is not limited to the listed equipments.
+Listed below are confirmed to work propery. But this module is not limited to the listed equipment.
+Because other stages and controllers (e.g. GSC series controllers) are not tested, the master branch does not support them.
+However, they are coded in ```dev``` branch hence you can use them by switching the branch.
+```
+git checkout dev
+sudo python3 setup.py install
+```
 
 ## Controllers
 * SHOT-702
