@@ -7,6 +7,7 @@ if sys.version_info[0] < 3:
 from enum import Enum, IntEnum
 import serial
 import time
+import pyvisa
 
 class Bad_Command_Parameter_or_Timing(Exception):
     '''Raised if the command, parameter, or timing is wrong.
@@ -377,6 +378,7 @@ class Controller:
         self.read_timeout = 1
         self.write_timeout = 1
         self.delimiter = b'\r\n'
+        self.delimiter_VISA = '\r\n'
         self.comm_ack = Comm_ack.MAIN
         # Load default values.
         if self.ctype is Controllers.SHOT_302GS or self.ctype is Controllers.SHOT_304GS:
@@ -606,40 +608,59 @@ class Session:
             raise ValueError('Must be one of Stages Enum.')
         self.stages.append(stype)
               
-    def connect(self, portname = '/dev/ttyUSB0'):
-        ''' Connect to the controller via RS232C.
+    def connect(self, portname = '/dev/ttyUSB0', connection_type = 'RS232C'):
+        ''' Connect to the controller via RS232C or VISA.
         
         Parameters
         ----------
-        portname : str, optional
-            Port name of the RS232C where the controller is connected.
+        portname : str
+            Port name of the RS232C where the controller is connected,
+            or the resource name for the GPIB connection.
         '''
-        self.port = serial.Serial(port    = portname,
-                             baudrate     = self.controller.baudrate,
-                             bytesize     = self.controller.databit,
-                             parity       = self.controller.parity,
-                             stopbits     = self.controller.stopbit,
-                             timeout      = self.controller.read_timeout,
-                             writeTimeout = self.controller.write_timeout,
-                             rtscts       = self.controller.rtscts)
-        self.connected = True
+
+        if connection_type == 'RS232C':
+            self.port = serial.Serial(port    = portname,
+                                 baudrate     = self.controller.baudrate,
+                                 bytesize     = self.controller.databit,
+                                 parity       = self.controller.parity,
+                                 stopbits     = self.controller.stopbit,
+                                 timeout      = self.controller.read_timeout,
+                                 writeTimeout = self.controller.write_timeout,
+                                 rtscts       = self.controller.rtscts)
+        elif connection_type == 'VISA':
+            self.rm = pyvisa.ResourceManager()
+            self.port = self.rm.open_resource(portname)
+        else:
+            print('Unknown connection type.')
         
+        self.port_type = connection_type
+        self.connected = True
         
     def __print(self, msg, level=1):
         if level <= self.verbose_level:
             print(msg)
         
     def __send(self, command, no_response=True):
-       if not self.connected:
-           raise Bad_Command_Parameter_or_Timing('Not connected to the controller yet.')
-       self.port.write(command.encode('ascii') + self.controller.delimiter)
-       if self.controller.comm_ack is Comm_ack.MAIN or not no_response:
-          response = (self.port.readline()[:self.__d]).decode('utf-8')
-          self.__print(command + ' >> ' + response, level=2)
-          if response == 'NG':
-              raise Bad_Command_Parameter_or_Timing(command + ' failed.')
-          return response
-       self.__print('[SUB] ' + command, level=2)
+        if not self.connected:
+            raise Bad_Command_Parameter_or_Timing('Not connected to the controller yet.')
+        if self.port_type == 'RS232C':
+            self.port.write(command.encode('ascii') + self.controller.delimiter)
+            if self.controller.comm_ack is Comm_ack.MAIN or not no_response:
+                response = (self.port.readline()[:self.__d]).decode('utf-8')
+                self.__print(command + ' >> ' + response, level=2)
+                if response == 'NG':
+                    raise Bad_Command_Parameter_or_Timing(command + ' failed.')
+                return response
+            self.__print('[SUB] ' + command, level=2)
+        elif self.port_type == 'VISA':
+            self.port.write(command)
+            if self.controller.comm_ack is Comm_ack.MAIN or not no_response:
+                response = self.port.read().replace(self.controller.delimiter_VISA, '')
+                self.__print(command + ' >> ' + response, level=2)
+                if response == 'NG':
+                    raise Bad_Command_Parameter_or_Timing(command + ' failed.')
+                return response
+        self.__print('[SUB] ' + command, level=2)
        
     def is_busy(self, stage=None, func=lambda x:x):
         ''' Whether the controller is under operation or not.
@@ -1148,6 +1169,7 @@ class Session:
         if not self.controller.is_support_Q():
             raise Not_Supported()
         response = self.__send('Q:', no_response=False)
+        response = response.replace(' ','') # Allows for negative identification of stage position
         data = response.split(',')
         ack1, ack2, ack3 = data[-3:]
         positions = [int(d) for d in data[:len(data) - 3]]
